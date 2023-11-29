@@ -1,1 +1,348 @@
-Welcome
+<!DOCTYPE html>
+<html>
+<head>
+    <title>flood3D</title>
+    <style>
+    body, html {
+        margin: 0;
+        padding: 0;
+    }
+    </style>
+</head>
+<body>
+    <script src="lib/three.js"></script>
+    <script src="lib/three.OrbitControls.js"></script>
+    <script>
+    "use strict";
+
+    var Map = function() {
+        var self = this;
+        
+        self.SIZE_W = 64
+        self.SIZE_H = 10;
+        self.SIZE_D = 64;
+        self.VIEW_D = 15;
+        self.VIEW_R = 12;
+        self.SIZE_A = (self.SIZE_W*self.SIZE_H*self.SIZE_D);
+		self.MAX_VIEW_HEIGHT = 4;
+
+        var player = new THREE.Vector3(6, 1, 8);
+
+        var data = new Uint8Array(self.SIZE_A);
+        var dataIndex = function(x, y, z) {
+            return ((z*self.SIZE_W*self.SIZE_H)+(y*self.SIZE_W)+x);
+        };
+
+        self.getVisibleWalls = function() {
+            const DIR = [
+                -1, 0, 0, 3, 1, // l
+                 1, 0, 0, 2, 1, // r
+                 0,-1, 0, 0, 1, // b
+                 0, 1, 0, 1, 1, // t
+                 0, 0,-1, 5, 1, // b
+                 0, 0, 1, 4, 1  // f
+            ];
+
+            var queue = [];
+            var visited = {};
+            var node = {pos: player, dist: 0};
+            var walls = [];
+            queue.push(node);
+            visited[dataIndex(player.x, player.y, player.z)] = true;
+
+            var count = 0;
+            var queueMaxLength = 0;
+            while (queue.length) {
+                queueMaxLength = Math.max(queueMaxLength, queue.length);
+                count++;
+                node = queue.shift();
+                for (var i = 0; i < 6; i++) {
+                    // get neighbouring node
+                    var nX = (node.pos.x+DIR[i*5+0]);
+                    var nY = (node.pos.y+DIR[i*5+1]);
+                    var nZ = (node.pos.z+DIR[i*5+2]);
+                    var nV = new THREE.Vector3(nX, nY, nZ);
+                    var nI = dataIndex(nX, nY, nZ);
+                    // check if not visited before
+                    if (!(nI in visited) && nY <= self.MAX_VIEW_HEIGHT) {
+                        // check distance and radius
+                        var nD = (node.dist+DIR[i*5+4]);
+                        if (nD <= self.VIEW_D) {
+                            // check node is not solid
+                            if (self.data(nX, nY, nZ) === 0) {
+                                queue.push({
+                                    pos: nV,
+                                    dist: nD
+                                });
+                                visited[nI] = true;
+                            } else {
+                                walls.push([nX, nY, nZ, DIR[i*5+3],
+                                    Math.min(1, ((self.VIEW_D-nD)/self.VIEW_D))]);
+                            }
+                        }
+                    }
+                }
+            }
+            console.log("Visibility iterations: " + count);
+            console.log("Visibility queue max length: " + queueMaxLength);
+            console.log("Number of walls: " + walls.length);
+            return walls;
+        };
+
+        self.generateMap = function() {
+            for (var i = 0; i < self.SIZE_A; i++) {
+                data[i] = 1;
+            }
+            for (var z = 1; z < self.SIZE_D-1; z++) {
+                for (var y = 1; y < self.SIZE_H-1; y++) {
+                    for (var x = 1; x < self.SIZE_W-1; x++) {
+                        self.data(x, y, z, 0);
+                    }
+                }
+            }
+            for (var z = 0; z < 5; z++) {
+                for (var y = 0; y < 4; y++) {
+                    for (var x = 0; x < 5; x++) {
+                        self.data(x, y, z, 1);
+                    }
+                }
+            }
+            for (var z = 1; z < 4; z++) {
+                for (var y = 1; y < 3; y++) {
+                    for (var x = 1; x < 4; x++) {
+                        self.data(x, y, z, 0);
+                    }
+                }
+            }
+            for (var z = 1; z < 9; z++) {
+                for (var y = 1; y < 9; y++) {
+                    for (var x = 7; x < 9; x++) {
+                        self.data(x, y, z, 1);
+                    }
+                }
+            }
+			for (var x = 0; x < 8; x++) {
+				self.data(x, 4, 8, 1);
+			}
+			for (var z = 0; z < 8; z++) {
+				self.data(6, 4, z, 1);
+			}
+            self.data(3, 1, 4, 0);
+            self.data(3, 2, 4, 0);
+        };
+
+        self.data = function(x, y, z, value) {
+            // check map boundary
+            if (x >= 0 && x < self.SIZE_W &&
+                y >= 0 && y < self.SIZE_H &&
+                z >= 0 && z < self.SIZE_D) {
+                // calculate block index
+                var index = dataIndex(x, y, z);
+                if (value !== undefined) {
+                    // set new block value if specified
+                    data[index] = value;
+                }
+                return data[index];
+            }
+            return 1;
+        };
+
+        self.getPlayer = function() {
+            return player;
+        };
+    };
+
+    var Renderer = function() {
+        var self = this;
+
+        self.SIZE_W = window.innerWidth;
+        self.SIZE_H = window.innerHeight;
+
+        self.MAX_QUADS = 64000;
+        self.MAX_VERTICES = (self.MAX_QUADS*4);
+
+        var map = new Map();
+        map.generateMap();
+        
+        // setup scene/camera
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(
+            75, (self.SIZE_W/self.SIZE_H), 0.1, 1000);
+        camera.position.z = -(map.VIEW_D/2);
+
+        // setup texture loader
+        var textureLoader = new THREE.TextureLoader();
+
+        // setup map mesh
+        var mapMesh = null;
+        var mapMeshVertexCount = 0;
+        var mapMeshGeometry = new THREE.BufferGeometry();
+        mapMeshGeometry.addAttribute(
+            "position",
+            new THREE.BufferAttribute(
+                new Float32Array(self.MAX_VERTICES*3), 3));
+        mapMeshGeometry.addAttribute(
+            "uv",
+            new THREE.BufferAttribute(
+                new Float32Array(self.MAX_VERTICES*2), 2));
+        mapMeshGeometry.addAttribute(
+            "color",
+            new THREE.BufferAttribute(
+                new Float32Array(self.MAX_VERTICES*3), 3));
+
+        // setup map mesh texture
+        textureLoader.load("art.png", function(mapTexture) {
+            mapTexture.magFilter = THREE.NearestFilter;
+            mapTexture.minFilter = THREE.NearestFilter;
+
+            // setup map mesh material
+            var mapMeshMaterial = new THREE.MeshBasicMaterial({
+                map: mapTexture,
+                vertexColors: THREE.VertexColors
+                //,side: THREE.DoubleSide
+            });
+            // generate initial map mesh geometry
+            mapMesh = new THREE.Mesh(mapMeshGeometry, mapMeshMaterial);
+            scene.add(mapMesh);
+
+            document.addEventListener("keydown", function(e) {
+                e.preventDefault();
+                switch (e.keyCode) {
+                    case 87: // w
+                    map.getPlayer().z++;
+                    break;
+                    case 68: // d
+                    map.getPlayer().x++;
+                    break;
+                    case 83: // s
+                    map.getPlayer().z--;
+                    break;
+                    case 65: // a
+                    map.getPlayer().x--;
+                    break;
+                }
+                generateMapMesh();
+            }, false);
+
+            generateMapMesh();
+        });
+        
+        // setup renderer element
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setSize(self.SIZE_W, self.SIZE_H);
+        document.body.appendChild(renderer.domElement);
+        var controls = new THREE.OrbitControls(camera);
+        controls.minDistance = map.VIEW_R*0.25;
+        controls.maxDistance = map.VIEW_R*0.75;
+        controls.maxPolarAngle = Math.PI/2;
+
+        var generateMapMesh = function() {
+            mapMeshVertexCount = 0;
+            
+            var walls = map.getVisibleWalls();
+            walls.forEach(function(wall) {
+                var x = wall[0];
+                var y = wall[1];
+                var z = wall[2];
+
+                var sides = [0,0,0,0,0,0];
+                sides[wall[3]] = 1;
+                generateMapBlockMesh(x, y, z, wall[4], sides);
+            });
+
+            // TEMP: draw player position as block
+            generateMapBlockMesh(
+                map.getPlayer().x,
+                map.getPlayer().y,
+                map.getPlayer().z,
+                0.5,
+                [1,1,1,1,1,1]);
+
+            console.log('Quad count: ' + mapMeshVertexCount/6);
+
+            mapMesh.geometry.setDrawRange(0, mapMeshVertexCount);
+            mapMesh.geometry.attributes.position.needsUpdate = true;
+            mapMesh.geometry.attributes.uv.needsUpdate = true;
+            mapMesh.geometry.attributes.color.needsUpdate = true;
+        };
+
+        var generateMapBlockMesh = function(x, y, z, l, sides) {
+            var xyz = mapMesh.geometry.attributes.position.array;
+            var uv  = mapMesh.geometry.attributes.uv.array;
+            var col = mapMesh.geometry.attributes.color.array;
+            var add = function(v, t) {
+                if (mapMeshVertexCount < self.MAX_VERTICES) {
+                    var xyzOffset = (mapMeshVertexCount*3);
+                    var  uvOffset = (mapMeshVertexCount*2);
+                    var colOffset = (mapMeshVertexCount*3);
+                    xyz[xyzOffset+0] = v.x;
+                    xyz[xyzOffset+1] = v.y;
+                    xyz[xyzOffset+2] = v.z;
+                    uv [ uvOffset+0] = t.x;
+                    uv [ uvOffset+1] = t.y;
+                    col[colOffset+0] = l;
+                    col[colOffset+1] = l;
+                    col[colOffset+2] = l;
+                    mapMeshVertexCount++;
+                }
+            };
+
+            var t0 = new THREE.Vector2(0, 0);
+            var t1 = new THREE.Vector2(1, 0);
+            var t2 = new THREE.Vector2(0, 1);
+            var t3 = new THREE.Vector2(1, 1);
+
+            var vA = new THREE.Vector3((x-0.5), (y+0.5), (z-0.5));
+            var vB = new THREE.Vector3((x+0.5), (y+0.5), (z-0.5));
+            var vC = new THREE.Vector3((x-0.5), (y-0.5), (z-0.5));
+            var vD = new THREE.Vector3((x+0.5), (y-0.5), (z-0.5));
+            var vE = new THREE.Vector3((x-0.5), (y+0.5), (z+0.5));
+            var vF = new THREE.Vector3((x+0.5), (y+0.5), (z+0.5));
+            var vG = new THREE.Vector3((x-0.5), (y-0.5), (z+0.5));
+            var vH = new THREE.Vector3((x+0.5), (y-0.5), (z+0.5));
+
+            if (sides[0]) { // top
+                add(vA, t0); add(vE, t2); add(vF, t3);
+                add(vA, t0); add(vF, t3); add(vB, t1);
+            }
+            if (sides[1]) { // bottom
+                add(vD, t0); add(vH, t1); add(vG, t3);
+                add(vC, t2); add(vD, t0); add(vG, t3);
+            }
+            if (sides[2]) { // right
+                add(vG, t0); add(vE, t2); add(vA, t3);
+                add(vG, t0); add(vA, t3); add(vC, t1);
+            }
+            if (sides[3]) { // left
+                add(vD, t0); add(vB, t2); add(vH, t1);
+                add(vB, t2); add(vF, t3); add(vH, t1);
+            }
+            if (sides[4]) { // front
+                add(vC, t0); add(vA, t2); add(vD, t1);
+                add(vA, t2); add(vB, t3); add(vD, t1);
+            }
+            if (sides[5]) { // back
+                add(vH, t0); add(vF, t2); add(vG, t1);
+                add(vF, t2); add(vE, t3); add(vG, t1);
+            }
+        };
+
+        self.draw = function() {
+            controls.update();
+            controls.target = map.getPlayer();
+			if (camera.position.y < (map.MAX_VIEW_HEIGHT+1.5)) {
+				camera.position.y = (map.MAX_VIEW_HEIGHT+1.5);
+			}
+            renderer.render(scene, camera);
+        };
+    };
+
+    // initialise and begin processing
+    var renderer = new Renderer();
+    (function tick() {
+        renderer.draw();
+        requestAnimationFrame(tick);
+    })();
+    </script>
+</body>
+</html>
