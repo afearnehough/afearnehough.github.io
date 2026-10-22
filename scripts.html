@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scripts: compiling to relocatable cells</title>
+
+<style>
+:root{
+  --paper:#f8f9fa;
+  --card:#ffffff;
+  --sunk:#f8f9fa;
+  --sunk2:#eaecf0;
+  --ink:#202122;
+  --ink2:#54595d;
+  --rule:#eaecf0;
+  --rule2:#c8ccd1;
+  --rule3:#a2a9b1;
+  --link:#3366cc;
+  --visited:#795cb2;
+  --ray:#9a5b0b;
+  --stone:#2a4b8d;
+  --moss:#286b4c;
+  --serif:Charter,Georgia,"Times New Roman",Times,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;color-scheme:light}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--serif);
+  font-size:16px;
+  line-height:1.62;
+}
+
+.page{
+  max-width:1160px;margin:0 auto;background:var(--card);
+  border-left:1px solid var(--rule2);border-right:1px solid var(--rule2);
+  padding:0 32px 56px;
+}
+@media(max-width:700px){.page{padding:0 16px 40px;border-left:none;border-right:none}}
+
+.masthead{padding-top:28px}
+h1{
+  font-family:var(--serif);font-weight:normal;font-size:34px;line-height:1.25;
+  margin:0 0 2px;padding-bottom:6px;border-bottom:1px solid var(--rule3);
+}
+.tagline{font:italic 13px/1.5 var(--sans);color:var(--ink2);margin:0 0 4px}
+
+.body{display:grid;grid-template-columns:214px minmax(0,1fr);gap:40px;margin-top:22px;align-items:start}
+@media(max-width:1000px){.body{display:block}}
+article{max-width:47em}
+
+.toc{
+  position:sticky;top:16px;font-family:var(--sans);font-size:13px;line-height:1.45;
+  border:1px solid var(--rule2);background:var(--sunk);padding:12px 14px;border-radius:2px;
+  max-height:calc(100vh - 40px);overflow-y:auto;
+}
+@media(max-width:1000px){
+  .toc{position:static;display:inline-block;max-width:100%;margin:20px 0 4px;max-height:none}
+}
+.toc h2{
+  font-family:var(--sans);font-size:14px;font-weight:bold;border:none;
+  margin:0 0 8px;padding:0;text-align:center;
+}
+.toc ol{list-style:none;margin:0;padding:0}
+.toc li{margin:0 0 5px}
+.toc a{display:block;color:var(--link);text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.toc .n{color:var(--ink2);font-variant-numeric:tabular-nums;margin-right:5px}
+.toc .grp{
+  margin:12px 0 7px;padding-top:9px;border-top:1px solid var(--rule2);
+  font-weight:bold;font-size:12px;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em;
+}
+.toc .grp:first-of-type{margin-top:4px;padding-top:0;border-top:none}
+
+h2{
+  font-family:var(--serif);font-weight:normal;font-size:25px;line-height:1.3;
+  margin:34px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--rule3);
+}
+h2 .secnum{color:var(--ink2);font-size:.8em;margin-right:.45em;font-variant-numeric:tabular-nums}
+h3{font-family:var(--sans);font-size:17px;font-weight:bold;margin:26px 0 6px;line-height:1.35}
+section{scroll-margin-top:14px}
+.parthead{
+  margin:46px 0 0;padding:9px 12px;background:var(--sunk2);border:1px solid var(--rule2);
+  font:bold 13px/1.4 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+}
+
+p{margin:0 0 12px}
+a{color:var(--link);text-decoration:none}
+a:visited{color:var(--visited)}
+a:hover{text-decoration:underline}
+ul,ol{margin:0 0 12px;padding-left:26px}
+li{margin-bottom:5px}
+em.term{font-style:normal;font-weight:bold}
+.lead-para{font-size:16.5px}
+.hatnote{font:italic 15px/1.55 var(--serif);color:var(--ink2);margin:0 0 14px;padding-left:26px}
+
+code{font-family:var(--mono);font-size:.85em;background:var(--sunk);border:1px solid var(--rule);
+  border-radius:2px;padding:0 3px}
+.code{margin:16px 0}
+.code .lbl{
+  font:12px/1.4 var(--sans);color:var(--ink2);padding:0 0 4px;
+  display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+}
+.code .lbl b{font-weight:bold;color:var(--ink)}
+pre{
+  margin:0;background:var(--sunk);border:1px solid var(--rule2);border-radius:2px;
+  padding:12px 14px;overflow-x:auto;
+  font:13px/1.55 var(--mono);color:var(--ink);
+}
+pre .c{color:var(--ink2);font-style:italic}
+pre .k{color:var(--stone)}
+pre .s{color:var(--moss)}
+
+figure{
+  margin:20px 0;padding:8px 8px 4px;background:var(--sunk);
+  border:1px solid var(--rule2);border-radius:2px;
+}
+figure svg{display:block;width:100%;height:auto;background:var(--card)}
+figcaption{font:13px/1.5 var(--sans);color:var(--ink2);margin-top:7px;padding:0 3px 4px}
+figcaption b{color:var(--ink)}
+.figwrap{overflow-x:auto}
+.figwrap figure{min-width:560px}
+
+svg .thin{stroke:var(--ink2);stroke-width:1;fill:none}
+svg .ink{stroke:var(--ink);stroke-width:1.4;fill:none}
+svg .head{fill:var(--sunk2);stroke:var(--rule3);stroke-width:1}
+svg .pool{fill:var(--moss);fill-opacity:.2;stroke:var(--moss);stroke-width:1.2}
+svg .ref{fill:var(--stone);fill-opacity:.18;stroke:var(--stone);stroke-width:1.2}
+svg .call{fill:var(--ray);fill-opacity:.25;stroke:var(--ray);stroke-width:1.2}
+svg .arrow{stroke:var(--stone);stroke-width:1.3;fill:none}
+svg text{font-family:var(--sans);font-size:12px;fill:var(--ink2)}
+svg text.em{fill:var(--ink);font-weight:bold}
+svg text.sm{font-size:10.5px}
+svg text.mono{font-family:var(--mono);font-size:10.5px;fill:var(--ink)}
+
+.note,.check,.summary{
+  margin:16px 0;padding:10px 14px;font-size:15px;
+  background:var(--sunk);border:1px solid var(--rule2);border-left:4px solid var(--rule3);
+}
+.note{border-left-color:var(--ray)}
+.check{border-left-color:var(--moss)}
+.summary{border-left-color:var(--rule3);background:var(--card)}
+.note .tag,.check .tag,.summary .tag{
+  display:block;font:bold 12px/1.4 var(--sans);letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink2);margin-bottom:5px;
+}
+.note p:last-child,.check p:last-child,.summary p:last-child,
+.note ul:last-child,.check ul:last-child,.summary ul:last-child{margin-bottom:0}
+.summary ul{padding-left:22px}
+
+.infobox{
+  float:right;width:270px;margin:4px 0 16px 22px;clear:right;
+  border:1px solid var(--rule3);background:var(--sunk);
+  font:13px/1.5 var(--sans);
+}
+.infobox .ib-title{
+  background:var(--sunk2);border-bottom:1px solid var(--rule3);
+  padding:7px 10px;font-weight:bold;font-size:14px;text-align:center;color:var(--ink);
+}
+.infobox table{width:100%;border-collapse:collapse}
+.infobox th,.infobox td{padding:5px 9px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--rule2)}
+.infobox th{width:38%;font-weight:bold;color:var(--ink2)}
+.infobox tr:last-child th,.infobox tr:last-child td{border-bottom:none}
+@media(max-width:640px){.infobox{float:none;width:auto;margin:14px 0}}
+
+.tablewrap{overflow-x:auto;margin:16px 0}
+table.wikitable{border-collapse:collapse;width:100%;font-size:14.5px;
+  border:1px solid var(--rule3);background:var(--card)}
+table.wikitable th,table.wikitable td{
+  border:1px solid var(--rule3);padding:6px 10px;text-align:left;vertical-align:top;
+}
+table.wikitable th{background:var(--sunk2);font-family:var(--sans);font-size:13px;font-weight:bold}
+table.wikitable td code{background:none;border:none;padding:0;white-space:nowrap}
+
+@media(max-width:640px){.hatnote{padding-left:14px}}
+
+footer{
+  margin-top:40px;padding-top:14px;border-top:1px solid var(--rule2);
+  font:13px/1.6 var(--sans);color:var(--ink2);
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="masthead">
+  <h1>Scripts</h1>
+  <p class="tagline">From the documentation of the stonegrimage engine. A tutorial article.</p>
+</header>
+
+<div class="body">
+
+<nav class="toc" aria-label="Contents">
+  <h2>Contents</h2>
+  <div class="grp">Part I &middot; The format</div>
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>What we are building</a></li>
+    <li><a href="#s2"><span class="n">2</span>Cells</a></li>
+    <li><a href="#s3"><span class="n">3</span>Units</a></li>
+    <li><a href="#s4"><span class="n">4</span>A worked example</a></li>
+    <li><a href="#s5"><span class="n">5</span>Copying a unit</a></li>
+  </ol>
+  <div class="grp">Part II &middot; The compiler</div>
+  <ol start="6">
+    <li><a href="#s6"><span class="n">6</span>Params and the expression stack</a></li>
+    <li><a href="#s7"><span class="n">7</span>Pass 1: the string pool</a></li>
+    <li><a href="#s8"><span class="n">8</span>Pass 2: the code</a></li>
+    <li><a href="#s9"><span class="n">9</span>Placing sub-units without recursion</a></li>
+    <li><a href="#s10"><span class="n">10</span>The whole compiler</a></li>
+  </ol>
+  <div class="grp">Part III &middot; Running it</div>
+  <ol start="11">
+    <li><a href="#s11"><span class="n">11</span>What the VM needs</a></li>
+    <li><a href="#s12"><span class="n">12</span>Limits and trade-offs</a></li>
+  </ol>
+</nav>
+
+<article>
+
+<aside class="infobox" aria-label="Summary of the format">
+  <div class="ib-title">Relocatable cell scripts</div>
+  <table>
+    <tr><th>Source</th><td>S-expressions: <code>(print "Hello")</code></td></tr>
+    <tr><th>Output</th><td>A flat array of 32-bit cells</td></tr>
+    <tr><th>Unit of code</th><td>One expression, with its own strings</td></tr>
+    <tr><th>Order</th><td>Postfix: arguments, then the call</td></tr>
+    <tr><th>References</th><td>All relative to the unit&rsquo;s first cell</td></tr>
+    <tr><th>Compiler</th><td>Two passes per unit, an explicit stack, no recursion</td></tr>
+    <tr><th>Payoff</th><td>Any unit can be copied out with one <code>memcpy</code></td></tr>
+  </table>
+</aside>
+
+<p class="lead-para">A <strong>script</strong> in the engine is a short program written as nested
+brackets, such as <code>(if (near-player) (print "Hello"))</code>. Before it can run, it is
+<em class="term">compiled</em> into a flat array of 32-bit numbers called
+<em class="term">cells</em>, which a small virtual machine steps through one at a time.</p>
+
+<p>This article describes a cell layout with one particular property: any piece of a compiled
+script can be lifted out and copied somewhere else without being changed. An entity can keep
+only the cells for its own behaviour, and everything else the script produced can be thrown
+away. Getting that property costs very little, but it has to be designed in from the start,
+because it rules out the obvious way of pointing from one cell to another.</p>
+
+<p>Part I describes the format. Part II builds the compiler that produces it, first one pass at
+a time and then as a single function with no recursion. Part III covers what the virtual machine
+has to do to run it.</p>
+
+<div class="note">
+  <span class="tag">How to read the code in this article</span>
+  <p>The listings are pseudocode. They are close to C, and read top to bottom, but they leave out
+  error handling and memory management so that the shape of the algorithm stays visible.
+  <code>push</code>, <code>pop</code> and <code>top</code> act on small fixed-size stacks. A
+  line that says <code>error</code> means: log the problem, give back the memory, and return
+  nothing.</p>
+</div>
+
+<p class="parthead">Part I &middot; The format</p>
+
+<section id="s1">
+  <h2><span class="secnum">1</span>What we are building</h2>
+
+  <p>Take two lines of script:</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 1.</b> Two root expressions</span><span></span></div><pre>
+(print "Hello World")
+(print "Goodbye")</pre></div>
+
+  <p>Each line that stands on its own is a <em class="term">root expression</em>. The compiled
+  output keeps them separate and in order: the strings one root needs, then its code, then the
+  strings the next root needs, then its code.</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 2.</b> The shape of the output</span><span></span></div><pre>
+[strings][code]  [strings][code]
+ root 1           root 2</pre></div>
+
+  <p>Some commands take another expression as an argument, without running it straight away.
+  <code>if</code> is the obvious one: <code>(if (print "Hi") (print "Bye"))</code> must decide
+  which of its two branches runs. An argument like that is a <em class="term">sub-expression</em>,
+  and the compiler treats it exactly like a root: it gets its own strings and its own code, and
+  it is placed after the code of the expression that owns it.</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 3.</b> Sub-expressions get the same treatment</span><span></span></div><pre>
+[if: strings][if: code]
+  [Hi: strings][Hi: code]
+  [Bye: strings][Bye: code]</pre></div>
+
+  <p>Every block of the form <code>[strings][code]</code>, whether it came from a root or a
+  sub-expression, is called a <em class="term">unit</em>. The rest of the article is about how
+  units are laid out, how they refer to each other, and how to produce them.</p>
+</section>
+
+<section id="s2">
+  <h2><span class="secnum">2</span>Cells</h2>
+
+  <p class="hatnote">One 32-bit number, two possible meanings, told apart by the top bit.</p>
+
+  <p>A cell is a <code>u32</code>. The top bit says what kind of cell it is, and the other 31
+  bits hold its contents.</p>
+
+  <div class="tablewrap"><table class="wikitable">
+    <thead><tr><th>Type</th><th>Top bit</th><th>Remaining bits</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>Data</td><td><code>0</code></td><td>31 bits of value</td>
+        <td>Numbers, string offsets, sub-unit offsets, lengths, string characters</td></tr>
+      <tr><td>Call</td><td><code>1</code></td><td>15 bits of command id, 16 bits of argument count</td>
+        <td>Running a command</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Code is written in <em class="term">postfix</em> order: the arguments come first and the
+  call comes last. <code>(print "Hi")</code> becomes a data cell that says where
+  <code>"Hi"</code> is, followed by a call cell that says <em>print, with one argument</em>.
+  When the VM reaches the call it already has the argument in hand, so nothing needs to look
+  ahead.</p>
+
+  <p>A string is stored as one data cell holding its length, followed by its characters packed
+  four to a cell. <code>"Hi"</code> takes two cells; <code>"Hello World"</code> takes four.</p>
+</section>
+
+<section id="s3">
+  <h2><span class="secnum">3</span>Units</h2>
+
+  <p class="hatnote">Everything a unit needs lives inside it, and it only ever points forwards
+  into itself.</p>
+
+  <p>Every unit has the same layout:</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 4.</b> One unit</span><span></span></div><pre>
+[unitLength]      <span class="c">total cells in this unit, sub-units included</span>
+[codeOffset]      <span class="c">cells from the start of the unit to its first code cell</span>
+[string pool]     <span class="c">length-prefixed strings, then a 0 cell</span>
+[code]            <span class="c">postfix: arguments, then the call</span>
+[return]          <span class="c">a call cell meaning "leave this unit"</span>
+[sub-unit] ...    <span class="c">each one is a complete unit</span></pre></div>
+
+  <p>The first cell of a unit is its <em class="term">base</em>. Three rules make the whole
+  scheme work:</p>
+
+  <ol>
+    <li><strong>Every reference is relative to the base.</strong> A string argument is stored as
+    &ldquo;the string that starts 2 cells into this unit&rdquo;, never as &ldquo;the string at
+    cell 9&rdquo;. A sub-expression argument is stored as &ldquo;the unit that starts 7 cells into
+    this one&rdquo;.</li>
+    <li><strong>Sub-units live inside their parent.</strong> They are placed after the parent&rsquo;s
+    <code>return</code>, and the parent&rsquo;s <code>unitLength</code> counts them. A unit and
+    everything it can reach form one contiguous run of cells.</li>
+    <li><strong>The header holds lengths, not jumps.</strong> The VM does not need a jump to get
+    past the strings: it reads <code>codeOffset</code> and starts there. And anything that wants
+    to copy a unit reads <code>unitLength</code> and knows how many cells to take.</li>
+  </ol>
+
+  <p>A whole script is just its root units placed one after another, with a single
+  <code>0</code> cell at the end. A <code>unitLength</code> of zero can never happen in a real
+  unit, since the header alone is two cells, so it serves as the end marker.</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 5.</b> A whole script</span><span></span></div><pre>
+[root unit][root unit] ... [root unit][0]</pre></div>
+</section>
+
+<section id="s4">
+  <h2><span class="secnum">4</span>A worked example</h2>
+
+  <p>Here is <code>(if (print "Hi") (print "Bye"))</code> compiled, cell by cell. The root unit
+  holds <code>if</code> and has no strings of its own. Its two arguments are sub-units, so its
+  code is two offsets and a call.</p>
+
+  <div class="figwrap"><figure>
+    <svg viewBox="0 0 690 190" role="img" aria-label="23 cells: the if unit's header and code, followed by the Hi unit and the Bye unit nested inside it. Arrows from the if unit's two offset cells point to the start of each sub-unit.">
+      <path class="arrow" d="M111.5 44 C 111.5 14, 213 14, 213 44" marker-end="url(#ah)"/>
+      <path class="arrow" d="M140.5 44 C 140.5 4, 445 4, 445 44" marker-end="url(#ah)"/>
+      <defs>
+        <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--stone)"/>
+        </marker>
+      </defs>
+
+      <g class="sm">
+        <text class="sm" x="24.5" y="56" text-anchor="middle">0</text>
+        <text class="sm" x="53.5" y="56" text-anchor="middle">1</text>
+        <text class="sm" x="82.5" y="56" text-anchor="middle">2</text>
+        <text class="sm" x="111.5" y="56" text-anchor="middle">3</text>
+        <text class="sm" x="140.5" y="56" text-anchor="middle">4</text>
+        <text class="sm" x="169.5" y="56" text-anchor="middle">5</text>
+        <text class="sm" x="198.5" y="56" text-anchor="middle">6</text>
+        <text class="sm" x="227.5" y="56" text-anchor="middle">7</text>
+        <text class="sm" x="256.5" y="56" text-anchor="middle">8</text>
+        <text class="sm" x="285.5" y="56" text-anchor="middle">9</text>
+        <text class="sm" x="314.5" y="56" text-anchor="middle">10</text>
+        <text class="sm" x="343.5" y="56" text-anchor="middle">11</text>
+        <text class="sm" x="372.5" y="56" text-anchor="middle">12</text>
+        <text class="sm" x="401.5" y="56" text-anchor="middle">13</text>
+        <text class="sm" x="430.5" y="56" text-anchor="middle">14</text>
+        <text class="sm" x="459.5" y="56" text-anchor="middle">15</text>
+        <text class="sm" x="488.5" y="56" text-anchor="middle">16</text>
+        <text class="sm" x="517.5" y="56" text-anchor="middle">17</text>
+        <text class="sm" x="546.5" y="56" text-anchor="middle">18</text>
+        <text class="sm" x="575.5" y="56" text-anchor="middle">19</text>
+        <text class="sm" x="604.5" y="56" text-anchor="middle">20</text>
+        <text class="sm" x="633.5" y="56" text-anchor="middle">21</text>
+        <text class="sm" x="662.5" y="56" text-anchor="middle">22</text>
+      </g>
+
+      <rect class="head" x="10"  y="62" width="29" height="32"/>
+      <rect class="head" x="39"  y="62" width="29" height="32"/>
+      <rect class="pool" x="68"  y="62" width="29" height="32"/>
+      <rect class="ref"  x="97"  y="62" width="29" height="32"/>
+      <rect class="ref"  x="126" y="62" width="29" height="32"/>
+      <rect class="call" x="155" y="62" width="29" height="32"/>
+      <rect class="call" x="184" y="62" width="29" height="32"/>
+
+      <rect class="head" x="213" y="62" width="29" height="32"/>
+      <rect class="head" x="242" y="62" width="29" height="32"/>
+      <rect class="pool" x="271" y="62" width="29" height="32"/>
+      <rect class="pool" x="300" y="62" width="29" height="32"/>
+      <rect class="pool" x="329" y="62" width="29" height="32"/>
+      <rect class="ref"  x="358" y="62" width="29" height="32"/>
+      <rect class="call" x="387" y="62" width="29" height="32"/>
+      <rect class="call" x="416" y="62" width="29" height="32"/>
+
+      <rect class="head" x="445" y="62" width="29" height="32"/>
+      <rect class="head" x="474" y="62" width="29" height="32"/>
+      <rect class="pool" x="503" y="62" width="29" height="32"/>
+      <rect class="pool" x="532" y="62" width="29" height="32"/>
+      <rect class="pool" x="561" y="62" width="29" height="32"/>
+      <rect class="ref"  x="590" y="62" width="29" height="32"/>
+      <rect class="call" x="619" y="62" width="29" height="32"/>
+      <rect class="call" x="648" y="62" width="29" height="32"/>
+
+      <text class="mono" x="24.5"  y="82" text-anchor="middle">23</text>
+      <text class="mono" x="53.5"  y="82" text-anchor="middle">3</text>
+      <text class="mono" x="82.5"  y="82" text-anchor="middle">0</text>
+      <text class="mono" x="111.5" y="82" text-anchor="middle">@7</text>
+      <text class="mono" x="140.5" y="82" text-anchor="middle">@15</text>
+      <text class="mono" x="169.5" y="82" text-anchor="middle">if/2</text>
+      <text class="mono" x="198.5" y="82" text-anchor="middle">ret</text>
+      <text class="mono" x="227.5" y="82" text-anchor="middle">8</text>
+      <text class="mono" x="256.5" y="82" text-anchor="middle">5</text>
+      <text class="mono" x="285.5" y="82" text-anchor="middle">2</text>
+      <text class="mono" x="314.5" y="82" text-anchor="middle">Hi</text>
+      <text class="mono" x="343.5" y="82" text-anchor="middle">0</text>
+      <text class="mono" x="372.5" y="82" text-anchor="middle">@2</text>
+      <text class="mono" x="401.5" y="82" text-anchor="middle">pr/1</text>
+      <text class="mono" x="430.5" y="82" text-anchor="middle">ret</text>
+      <text class="mono" x="459.5" y="82" text-anchor="middle">8</text>
+      <text class="mono" x="488.5" y="82" text-anchor="middle">5</text>
+      <text class="mono" x="517.5" y="82" text-anchor="middle">3</text>
+      <text class="mono" x="546.5" y="82" text-anchor="middle">Bye</text>
+      <text class="mono" x="575.5" y="82" text-anchor="middle">0</text>
+      <text class="mono" x="604.5" y="82" text-anchor="middle">@2</text>
+      <text class="mono" x="633.5" y="82" text-anchor="middle">pr/1</text>
+      <text class="mono" x="662.5" y="82" text-anchor="middle">ret</text>
+
+      <path class="thin" d="M213 102 v6 H445 v-6"/>
+      <text class="sm" x="329" y="122" text-anchor="middle">Hi unit, base 7, length 8</text>
+      <path class="thin" d="M445 102 v6 H677 v-6"/>
+      <text class="sm" x="561" y="122" text-anchor="middle">Bye unit, base 15, length 8</text>
+      <path class="ink" d="M10 134 v6 H677 v-6"/>
+      <text class="em" x="343.5" y="156" text-anchor="middle">if unit, base 0, length 23</text>
+
+      <rect class="head" x="120" y="170" width="12" height="12"/><text class="sm" x="136" y="180">header</text>
+      <rect class="pool" x="200" y="170" width="12" height="12"/><text class="sm" x="216" y="180">string pool</text>
+      <rect class="ref"  x="300" y="170" width="12" height="12"/><text class="sm" x="316" y="180">data argument</text>
+      <rect class="call" x="410" y="170" width="12" height="12"/><text class="sm" x="426" y="180">call</text>
+    </svg>
+    <figcaption><b>Figure 1. One root unit with two sub-units inside it.</b> <code>@n</code> means
+    &ldquo;n cells from the base of the unit this cell belongs to&rdquo;. The <code>if</code> unit
+    points 7 and 15 cells forward, to its sub-units. Inside each sub-unit, <code>@2</code> is that
+    unit&rsquo;s own string, so the two <code>@2</code> cells point at different strings. Each
+    <code>pr/1</code> is a call to <code>print</code> with one argument.</figcaption>
+  </figure></div>
+
+  <p>Walk through the <code>Hi</code> unit, which starts at cell 7. Its first cell says it is 8
+  cells long. Its second says the code starts 5 cells in, at cell 12, which skips the header, the
+  string and the 0 that ends the pool. At cell 12 is <code>@2</code>, meaning the string 2 cells
+  into this unit: cell 9, which holds the length 2, followed by the characters <code>Hi</code>.
+  Then <code>pr/1</code> prints it, and <code>ret</code> hands control back to whoever ran the
+  unit.</p>
+
+  <p>The root unit&rsquo;s length is 23 because it includes both sub-units. Its pool is empty, so
+  it is a single 0 cell, and its code starts at cell 3.</p>
+</section>
+
+<section id="s5">
+  <h2><span class="secnum">5</span>Copying a unit</h2>
+
+  <p>Suppose an entity only needs the <code>Hi</code> branch. Copying it is one call:</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 6.</b> Extracting a unit</span><span>no fix-ups</span></div><pre>
+length = cells[base]
+memcpy(newCells, cells + base, length * sizeof(u32))</pre></div>
+
+  <p>In the new buffer the unit starts at cell 0 instead of cell 7, and nothing inside it needs
+  to change. Its <code>@2</code> still means &ldquo;2 cells from my base&rdquo;, and the base has
+  moved along with it. If the unit had sub-units of its own, they would have been copied too,
+  because they sit inside its length.</p>
+
+  <p>The same works for a whole root: copy <code>unitLength</code> cells and you have a
+  self-contained program. Once every entity has copied the unit it needs, the original compiled
+  script can be discarded.</p>
+
+  <div class="note">
+    <span class="tag">Why not absolute indices?</span>
+    <p>With absolute indices, cell 12 would say &ldquo;the string at cell 9&rdquo;. Copy the unit
+    to cell 0 and that is now wrong, so every reference would need to be found and rewritten.
+    To find them you would need to know which data cells are references and which are plain
+    numbers, which means decoding the code. Relative offsets avoid the question entirely.</p>
+  </div>
+
+  <div class="summary">
+    <span class="tag">Summary</span>
+    <ul>
+      <li>A unit is a header, a string pool, code, a return, and its sub-units, in that order.</li>
+      <li>Every reference is an offset from the unit&rsquo;s first cell.</li>
+      <li>A unit contains everything it can reach, so <code>unitLength</code> cells starting at
+      its base can be copied anywhere.</li>
+    </ul>
+  </div>
+</section>
+
+<p class="parthead">Part II &middot; The compiler</p>
+
+<section id="s6">
+  <h2><span class="secnum">6</span>Params and the expression stack</h2>
+
+  <p class="hatnote">Both passes need to know, for every argument, what kind of argument the
+  command expects in that position.</p>
+
+  <p>Each registered command has a <code>params</code> string. Its first character is what the
+  command returns, and each character after that describes one argument.</p>
+
+  <div class="tablewrap"><table class="wikitable">
+    <thead><tr><th>Character</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>v</code></td><td>Void: returns nothing (return position only)</td></tr>
+      <tr><td><code>n</code></td><td>A number</td></tr>
+      <tr><td><code>s</code></td><td>A string</td></tr>
+      <tr><td><code>x</code></td><td>A sub-expression, compiled as its own unit</td></tr>
+      <tr><td><code>+</code></td><td>The previous argument kind, repeated any number of times</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>So <code>if</code> might be <code>vxx</code> and <code>print</code> might be
+  <code>vs</code>. While reading tokens, the compiler keeps a stack of open expressions. Each
+  entry records the command and how many arguments have been read so far:</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 7.</b> An open expression</span><span></span></div><pre>
+Expression:
+  commandId
+  command
+  argIndex          <span class="c">how many arguments have been read so far</span>
+
+currentParam(e):
+  <span class="c">the kind of argument e expects next</span>
+  return e.command.params[1 + e.argIndex], with '+' repeating the character before it</pre></div>
+
+  <p>The one rule that drives everything else: when a <code>(</code> appears and the expression
+  on top of the stack expects an <code>x</code>, the new expression is <em>not</em> part of the
+  current unit. It will become a unit of its own later, so for now the compiler skips over it to
+  its matching <code>)</code>.</p>
+
+  <p>A <code>(</code> in any other position, such as a command that returns a number being used
+  as a number argument, is an ordinary nested call. It is compiled inline, in postfix order, as
+  part of the current unit, and its strings go in the current unit&rsquo;s pool.</p>
+</section>
+
+<section id="s7">
+  <h2><span class="secnum">7</span>Pass 1: the string pool</h2>
+
+  <p>A unit&rsquo;s strings come before its code, but the compiler does not know which strings
+  the code needs until it has read it. The simplest answer is to read the unit&rsquo;s tokens
+  twice. The tokeniser&rsquo;s position in the source text, <code>chIndex</code>, is all it needs
+  to start again, so a unit is identified by the <code>chIndex</code> of its opening
+  <code>(</code>.</p>
+
+  <p>The first pass collects strings. It skips sub-expressions in <code>x</code> positions,
+  because their strings belong in their own pools, and it skips command names, which are not
+  string arguments.</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 8.</b> Pass 1</span><span>strings only</span></div><pre>
+at = base + 2                        <span class="c">after the two header cells</span>
+clear exprs
+chIndex = unit.exprStart
+
+do:
+  token = nextToken(script, &amp;chIndex)
+
+  <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+           command = lookup(name) or error "Unknown command"
+           if exprs not empty and currentParam(exprs.top) == 'x':
+             skipToMatchingClose(script, &amp;chIndex)
+             exprs.top.argIndex++
+             continue
+           push exprs { command, argIndex: 0 }
+
+  <span class="k">string</span> : if currentParam(exprs.top) == 's'
+             and not searchString(cells[base + 2 ...], token):
+             at += writeString(cells[at], token)
+           exprs.top.argIndex++
+
+  <span class="k">number</span> : exprs.top.argIndex++
+
+  <span class="k">')'</span>    : pop exprs
+           if exprs not empty: exprs.top.argIndex++
+
+  <span class="k">END</span>    : error "Unclosed '('"
+while exprs not empty
+
+cells[at++] = 0                      <span class="c">end of the pool</span>
+cells[base + 1] = at - base          <span class="c">codeOffset</span></pre></div>
+
+  <p><code>searchString</code> walks the pool from its start until it reaches the 0 cell, and
+  returns the offset of a matching string if there is one. That stops the same string being
+  stored twice in one unit. Strings are not shared between units: a copied unit has to carry its
+  own, so sharing would break <a href="#s5">section 5</a>.</p>
+
+  <p><code>skipToMatchingClose</code> is a depth counter: read tokens, add one for every
+  <code>(</code> and subtract one for every <code>)</code>, and stop when the count returns to
+  zero. Parentheses inside string literals are not a problem, because the tokeniser has already
+  turned those into string tokens.</p>
+</section>
+
+<section id="s8">
+  <h2><span class="secnum">8</span>Pass 2: the code</h2>
+
+  <p>The second pass reads the same tokens again and writes code cells after the pool. It is the
+  same loop with three differences:</p>
+
+  <ul>
+    <li>It checks each argument against the param it fills, and each command against
+    <code>privileged</code> if the command is protected.</li>
+    <li>At every <code>)</code> it writes the call cell. Because the arguments were written first,
+    the output is postfix without any extra work.</li>
+    <li>When it meets a sub-expression in an <code>x</code> position, it writes a placeholder
+    cell and records a <em class="term">pending</em> entry: where the placeholder is, and where
+    the sub-expression starts in the source.</li>
+  </ul>
+
+  <div class="code"><div class="lbl"><span><b>Listing 9.</b> Pass 2</span><span>code cells</span></div><pre>
+clear exprs
+chIndex = unit.exprStart
+
+do:
+  open  = chIndex
+  token = nextToken(script, &amp;chIndex)
+
+  <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+           command = lookup(name)
+           if command.protected and not privileged: error "Command is protected"
+           if exprs not empty and currentParam(exprs.top) == 'x':
+             push pending { cell: at, exprStart: open }
+             cells[at++] = placeholder
+             skipToMatchingClose(script, &amp;chIndex)
+             exprs.top.argIndex++
+             continue
+           if exprs not empty:
+             check returnType(command) fits currentParam(exprs.top)
+           push exprs { commandId, command, argIndex: 0 }
+
+  <span class="k">number</span> : check currentParam(exprs.top) == 'n'
+           cells[at++] = data(number)
+           exprs.top.argIndex++
+
+  <span class="k">string</span> : check currentParam(exprs.top) == 's'
+           cells[at++] = data(2 + searchString(cells[base + 2 ...], token))
+           exprs.top.argIndex++
+
+  <span class="k">')'</span>    : expr = pop exprs
+           check expr.argIndex is a valid count for expr.command.params
+           cells[at++] = call(expr.commandId, expr.argIndex)
+           if exprs not empty: exprs.top.argIndex++
+while exprs not empty
+
+cells[at++] = call(returnId, 0)</pre></div>
+
+  <p>The <code>2 +</code> on the string offset is there because <code>searchString</code>
+  returns an offset from the start of the pool, and the pool starts two cells after the base.</p>
+
+  <p>When pass 2 ends, the unit&rsquo;s own cells are finished except for two things: its
+  <code>unitLength</code>, and the placeholders for its sub-units. Neither can be filled in
+  until the sub-units have been placed, which is the subject of the next section.</p>
+</section>
+
+<section id="s9">
+  <h2><span class="secnum">9</span>Placing sub-units without recursion</h2>
+
+  <p class="hatnote">A unit cannot be finished until its children are, and its children cannot
+  be placed until it has written its own code.</p>
+
+  <p>The recursive version is easy to describe: compile the unit, then for each pending entry,
+  compile a child unit at the current end of the buffer, patch the placeholder with
+  <code>childBase - base</code>, and add the child&rsquo;s length. Finally write
+  <code>unitLength</code>. Each child places its own children the same way before returning, so
+  the whole subtree ends up inside the parent&rsquo;s span.</p>
+
+  <p>To do that without recursion, replace the call stack with an explicit stack of
+  <em class="term">unit frames</em>. Each frame is a unit that has been started but not yet
+  finished:</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 10.</b> The frame and the pending entry</span><span></span></div><pre>
+UnitFrame:
+  base              <span class="c">cell where this unit starts</span>
+  exprStart         <span class="c">chIndex of this unit's '('</span>
+  parentBase        <span class="c">base of the parent unit, or none for a root</span>
+  placeholder       <span class="c">cell in the parent to patch, or none for a root</span>
+  pendingStart      <span class="c">this unit's slice of the shared pending array</span>
+  pendingEnd
+  pendingNext       <span class="c">next pending entry to turn into a child</span>
+  compiled          <span class="c">false until both passes have run</span>
+
+Pending:
+  cell              <span class="c">placeholder cell in the parent's code</span>
+  exprStart         <span class="c">chIndex of the sub-expression's '('</span></pre></div>
+
+  <p>The loop looks at the frame on top of the stack and does one of three things:</p>
+
+  <ol>
+    <li><strong>Not compiled yet:</strong> run both passes. Its pending entries are appended to
+    the shared pending array, and the frame remembers which slice is its own.</li>
+    <li><strong>Has a pending entry left:</strong> take the next one, and push a new frame for it
+    whose base is the current end of the buffer.</li>
+    <li><strong>No pending entries left:</strong> every child is placed, so the unit is finished.
+    Write its <code>unitLength</code> as <code>at - base</code>, patch its placeholder in the
+    parent, drop its slice of the pending array, and pop it.</li>
+  </ol>
+
+  <p>Two facts make this correct. First, a child is only pushed when its parent is on top of the
+  stack, and the parent does nothing more until that child is popped, so each child finishes
+  completely, with all of its own children, before its next sibling starts. The siblings
+  therefore land one after another inside the parent, which is exactly the layout in
+  <a href="#s4">figure 1</a>. Second, a child&rsquo;s pending entries are always added above its
+  parent&rsquo;s slice and removed before the parent continues, so the shared array behaves as a
+  stack and the parent&rsquo;s indices into it stay valid.</p>
+</section>
+
+<section id="s10">
+  <h2><span class="secnum">10</span>The whole compiler</h2>
+
+  <p>Putting the pieces together, with an outer loop over the root expressions, gives the whole
+  of <code>compileScript</code>. Pass 1 and pass 2 are listings 8 and 9 unchanged.</p>
+
+  <div class="code"><div class="lbl"><span><b>Listing 11.</b> compileScript</span><span>one function, no recursion</span></div><pre>
+compileScript(script, privileged):
+  cells   = allocate(capacity)
+  at      = 0
+  cursor  = 0
+  units   = stack of UnitFrame
+  pending = stack of Pending
+  exprs   = stack of Expression
+
+  loop:                                    <span class="c">one iteration per root</span>
+    token = peekToken(script, cursor)
+    if token is END: break
+    if token is not '(': error "Expected '(' at top level"
+
+    push units { base: at, exprStart: cursor, parentBase: none,
+                 placeholder: none, compiled: false }
+
+    while units not empty:
+      unit = units.top
+
+      if not unit.compiled:
+        unit.compiled = true
+        <span class="c">pass 1 (listing 8)</span>
+        unit.pendingStart = pending.length
+        <span class="c">pass 2 (listing 9)</span>
+        unit.pendingEnd  = pending.length
+        unit.pendingNext = unit.pendingStart
+        if unit.parentBase is none: cursor = chIndex
+
+      if unit.pendingNext &lt; unit.pendingEnd:
+        p = pending[unit.pendingNext]
+        unit.pendingNext++
+        push units { base: at, exprStart: p.exprStart, parentBase: unit.base,
+                     placeholder: p.cell, compiled: false }
+        continue
+
+      cells[unit.base] = at - unit.base
+      if unit.placeholder is not none:
+        cells[unit.placeholder] = data(unit.base - unit.parentBase)
+      pending.length = unit.pendingStart
+      pop units
+
+  cells[at] = 0                            <span class="c">end of the root list</span>
+  return cells</pre></div>
+
+  <p>The line <code>cursor = chIndex</code> only runs for a root, after its pass 2. At that point
+  <code>chIndex</code> is just past the root&rsquo;s closing <code>)</code>, which is where the
+  next root begins. Sub-units never move the cursor: their source text is inside the root&rsquo;s
+  and has already been passed.</p>
+
+  <p>Every error path does the same thing: log the message, rewind the arena to where it was
+  before <code>cells</code> was allocated, and return nothing. Nothing outside the cell buffer
+  has been touched, so there is nothing else to undo.</p>
+
+  <div class="check">
+    <span class="tag">Check your understanding</span>
+    <p>Trace <code>(if (print "Hi") (print "Bye"))</code> through listing 11. The root frame is
+    compiled and records two pending entries. The <code>Hi</code> frame is pushed at cell 7,
+    compiled, has no pending entries, writes its length 8, patches cell 3 with
+    <code>7 - 0</code> and pops. The <code>Bye</code> frame does the same at cell 15 and patches
+    cell 4. The root then writes its length 23 and pops. Compare the result with
+    <a href="#s4">figure 1</a>.</p>
+  </div>
+</section>
+
+<p class="parthead">Part III &middot; Running it</p>
+
+<section id="s11">
+  <h2><span class="secnum">11</span>What the VM needs</h2>
+
+  <p>The VM has to know which unit it is in, because every offset is relative to that unit. So
+  each frame of execution carries a <code>base</code> as well as a position:</p>
+
+  <ul>
+    <li><strong>Entering a unit</strong> at <code>base</code> means starting at
+    <code>base + cells[base + 1]</code>.</li>
+    <li><strong>A string argument</strong> <code>@n</code> is the string at
+    <code>base + n</code>.</li>
+    <li><strong>A sub-expression argument</strong> <code>@n</code> is the unit at
+    <code>base + n</code>. A command such as <code>if</code> runs it by pushing a new frame with
+    that base, and the child&rsquo;s <code>return</code> pops the frame and resumes the parent.</li>
+    <li><strong>A <code>return</code> at root level</strong> moves on to the next root, at
+    <code>base + cells[base]</code>. If the length there is 0, the script has finished.</li>
+  </ul>
+
+  <p>Note that <code>return</code> is not the same as <code>end</code>. <code>end</code> stops the
+  whole script, while <code>return</code> only leaves the current unit.</p>
+</section>
+
+<section id="s12">
+  <h2><span class="secnum">12</span>Limits and trade-offs</h2>
+
+  <ul>
+    <li><strong>Stack sizes.</strong> The expression stack is bounded by how deeply calls nest
+    inside one unit, and the unit stack by how deeply sub-expressions nest. One depth limit can
+    serve both. The pending stack holds every pending entry along a single path from a root to
+    the unit being compiled, so the depth limit times the most <code>x</code> arguments any
+    command takes is a safe size for it.</li>
+    <li><strong>Repeated strings.</strong> Strings are only shared within a unit. A string used
+    in five sub-units is stored five times. That is the price of each unit being
+    self-contained.</li>
+    <li><strong>Two passes.</strong> Every unit&rsquo;s source is tokenised twice, and the source
+    of a sub-expression is also skipped over once by each of its ancestors. Scripts are short
+    and the tokeniser is cheap, so this rarely matters, and it saves keeping a buffer of tokens.</li>
+    <li><strong>Offsets only point forwards.</strong> A unit can never refer to anything before
+    its base or after its end. That is what makes copying safe, and it is also why a
+    sub-expression cannot jump back to its parent: it can only return.</li>
+    <li><strong>Size.</strong> Offsets are 31-bit data cells, and argument counts 16 bits, which
+    is far more than any script needs.</li>
+  </ul>
+</section>
+
+<footer>
+  <p>Scripts: a cell format in which every piece of a compiled program can be copied out on its
+  own, and a compiler that produces it with two passes and a stack.</p>
+</footer>
+
+</article>
+</div>
+</div>
+
+</body>
+</html>
