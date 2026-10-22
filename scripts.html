@@ -639,13 +639,15 @@ cells[base + 1] = at - base          <span class="c">codeOffset</span></pre></di
     <li>At every <code>)</code> it writes the call cell. Because the arguments were written first,
     the output is postfix without any extra work.</li>
     <li>When it meets a sub-expression in an <code>x</code> position, it writes a placeholder
-    cell and records a <em class="term">pending</em> entry: where the placeholder is, and where
-    the sub-expression starts in the source.</li>
+    cell and pushes a frame for a new unit that has not been compiled yet. The frame records
+    where the placeholder is and where the sub-expression starts in the source. Frames are
+    explained in the <a href="#s9">next section</a>.</li>
   </ul>
 
   <div class="code"><div class="lbl"><span><b>Listing 9.</b> Pass 2</span><span>code cells</span></div><pre>
 clear exprs
 chIndex = unit.exprStart
+firstChild = units.length
 
 do:
   open  = chIndex
@@ -655,7 +657,9 @@ do:
            command = lookup(name)
            if command.protected and not privileged: error "Command is protected"
            if exprs not empty and currentParam(exprs.top) == 'x':
-             push pending { cell: at, exprStart: open }
+             if units is full: error "Too many sub-expressions"
+             push units { exprStart: open, parentBase: base,
+                          placeholder: at, compiled: false }
              cells[at++] = placeholder
              skipToMatchingClose(script, &amp;chIndex)
              exprs.top.argIndex++
@@ -678,10 +682,15 @@ do:
            if exprs not empty: exprs.top.argIndex++
 while exprs not empty
 
-cells[at++] = call(returnId, 0)</pre></div>
+cells[at++] = call(returnId, 0)
+reverse units[firstChild ...]        <span class="c">so the first child is on top</span></pre></div>
 
   <p>The <code>2 +</code> on the string offset is there because <code>searchString</code>
   returns an offset from the start of the pool, and the pool starts two cells after the base.</p>
+
+  <p>The frames for sub-units are pushed in source order, which leaves the last one on top. The
+  <code>reverse</code> at the end puts the first one on top instead, so that sub-units are
+  compiled, and laid out, in the order they appear in the source.</p>
 
   <p>When pass 2 ends, the unit&rsquo;s own cells are finished except for two things: its
   <code>unitLength</code>, and the placeholders for its sub-units. Neither can be filled in
@@ -694,50 +703,51 @@ cells[at++] = call(returnId, 0)</pre></div>
   <p class="hatnote">A unit cannot be finished until its children are, and its children cannot
   be placed until it has written its own code.</p>
 
-  <p>The recursive version is easy to describe: compile the unit, then for each pending entry,
+  <p>The recursive version is easy to describe: compile the unit, then for each sub-expression it skipped,
   compile a child unit at the current end of the buffer, patch the placeholder with
   <code>childBase - base</code>, and add the child&rsquo;s length. Finally write
   <code>unitLength</code>. Each child places its own children the same way before returning, so
   the whole subtree ends up inside the parent&rsquo;s span.</p>
 
   <p>To do that without recursion, replace the call stack with an explicit stack of
-  <em class="term">unit frames</em>. Each frame is a unit that has been started but not yet
-  finished:</p>
+  <em class="term">unit frames</em>. A frame is a unit that has been found but not yet finished.
+  It may not even have been compiled: pass 2 pushes a frame for every sub-expression it skips,
+  and that frame only gets a <code>base</code> when it is compiled.</p>
 
-  <div class="code"><div class="lbl"><span><b>Listing 10.</b> The frame and the pending entry</span><span></span></div><pre>
+  <div class="code"><div class="lbl"><span><b>Listing 10.</b> A unit frame</span><span></span></div><pre>
 UnitFrame:
-  base              <span class="c">cell where this unit starts</span>
+  base              <span class="c">cell where this unit starts, set when it is compiled</span>
   exprStart         <span class="c">chIndex of this unit's '('</span>
   parentBase        <span class="c">base of the parent unit, or none for a root</span>
   placeholder       <span class="c">cell in the parent to patch, or none for a root</span>
-  pendingStart      <span class="c">this unit's slice of the shared pending array</span>
-  pendingEnd
-  pendingNext       <span class="c">next pending entry to turn into a child</span>
-  compiled          <span class="c">false until both passes have run</span>
+  compiled          <span class="c">false until both passes have run</span></pre></div>
 
-Pending:
-  cell              <span class="c">placeholder cell in the parent's code</span>
-  exprStart         <span class="c">chIndex of the sub-expression's '('</span></pre></div>
-
-  <p>The loop looks at the frame on top of the stack and does one of three things:</p>
+  <p>The loop looks at the frame on top of the stack and does one of two things:</p>
 
   <ol>
-    <li><strong>Not compiled yet:</strong> run both passes. Its pending entries are appended to
-    the shared pending array, and the frame remembers which slice is its own.</li>
-    <li><strong>Has a pending entry left:</strong> take the next one, and push a new frame for it
-    whose base is the current end of the buffer.</li>
-    <li><strong>No pending entries left:</strong> every child is placed, so the unit is finished.
-    Write its <code>unitLength</code> as <code>at - base</code>, patch its placeholder in the
-    parent, drop its slice of the pending array, and pop it.</li>
+    <li><strong>Not compiled yet:</strong> set its <code>base</code> to the current end of the
+    buffer and run both passes. Pass 2 pushes a frame above it for each of its sub-units.</li>
+    <li><strong>Already compiled:</strong> every frame that was above it has been finished and
+    popped, so all of its sub-units are in place. Write its <code>unitLength</code> as
+    <code>at - base</code>, patch its placeholder in the parent with
+    <code>base - parentBase</code>, and pop it.</li>
   </ol>
 
-  <p>Two facts make this correct. First, a child is only pushed when its parent is on top of the
-  stack, and the parent does nothing more until that child is popped, so each child finishes
-  completely, with all of its own children, before its next sibling starts. The siblings
-  therefore land one after another inside the parent, which is exactly the layout in
-  <a href="#s4">figure 1</a>. Second, a child&rsquo;s pending entries are always added above its
-  parent&rsquo;s slice and removed before the parent continues, so the shared array behaves as a
-  stack and the parent&rsquo;s indices into it stay valid.</p>
+  <p>This is correct because a frame is only ever compiled when it is on top, and a parent
+  always sits below its children. When a child is compiled, everything it writes, and
+  everything its own children write, lands before the next frame down is compiled. Each child
+  therefore finishes completely before its next sibling starts, and the siblings land one after
+  another inside the parent, which is exactly the layout in <a href="#s4">figure 1</a>. When the
+  parent reaches the top again, <code>at</code> is past its last descendant, so
+  <code>at - base</code> is its full length.</p>
+
+  <div class="note">
+    <span class="tag">Why the expression stack stays separate</span>
+    <p>Pass 2 pushes frames while expressions are still open. If both lived on one stack, a
+    frame would sit on top of the expression being read and <code>exprs.top</code> would no
+    longer be it. The expression stack is also empty between units, so it never needs to share
+    space with frames anyway.</p>
+  </div>
 </section>
 
 <section id="s10">
@@ -748,19 +758,18 @@ Pending:
 
   <div class="code"><div class="lbl"><span><b>Listing 11.</b> compileScript</span><span>one function, no recursion</span></div><pre>
 compileScript(script, privileged):
-  cells   = allocate(capacity)
-  at      = 0
-  cursor  = 0
-  units   = stack of UnitFrame
-  pending = stack of Pending
-  exprs   = stack of Expression
+  cells  = allocate(capacity)
+  at     = 0
+  cursor = 0
+  units  = stack of UnitFrame
+  exprs  = stack of Expression
 
   loop:                                    <span class="c">one iteration per root</span>
     token = peekToken(script, cursor)
     if token is END: break
     if token is not '(': error "Expected '(' at top level"
 
-    push units { base: at, exprStart: cursor, parentBase: none,
+    push units { exprStart: cursor, parentBase: none,
                  placeholder: none, compiled: false }
 
     while units not empty:
@@ -768,24 +777,16 @@ compileScript(script, privileged):
 
       if not unit.compiled:
         unit.compiled = true
+        unit.base = at
+        base = unit.base
         <span class="c">pass 1 (listing 8)</span>
-        unit.pendingStart = pending.length
         <span class="c">pass 2 (listing 9)</span>
-        unit.pendingEnd  = pending.length
-        unit.pendingNext = unit.pendingStart
         if unit.parentBase is none: cursor = chIndex
-
-      if unit.pendingNext &lt; unit.pendingEnd:
-        p = pending[unit.pendingNext]
-        unit.pendingNext++
-        push units { base: at, exprStart: p.exprStart, parentBase: unit.base,
-                     placeholder: p.cell, compiled: false }
         continue
 
       cells[unit.base] = at - unit.base
       if unit.placeholder is not none:
         cells[unit.placeholder] = data(unit.base - unit.parentBase)
-      pending.length = unit.pendingStart
       pop units
 
   cells[at] = 0                            <span class="c">end of the root list</span>
@@ -803,10 +804,11 @@ compileScript(script, privileged):
   <div class="check">
     <span class="tag">Check your understanding</span>
     <p>Trace <code>(if (print "Hi") (print "Bye"))</code> through listing 11. The root frame is
-    compiled and records two pending entries. The <code>Hi</code> frame is pushed at cell 7,
-    compiled, has no pending entries, writes its length 8, patches cell 3 with
-    <code>7 - 0</code> and pops. The <code>Bye</code> frame does the same at cell 15 and patches
-    cell 4. The root then writes its length 23 and pops. Compare the result with
+    compiled at cell 0 and pushes frames for <code>Hi</code> and <code>Bye</code>, then reverses
+    them so <code>Hi</code> is on top. <code>Hi</code> is compiled at cell 7 and pushes nothing,
+    so on the next turn of the loop it is finished: it writes its length 8, patches cell 3 with
+    <code>7 - 0</code>, and pops. <code>Bye</code> does the same at cell 15 and patches cell 4.
+    The root is on top again, writes its length 23, and pops. Compare the result with
     <a href="#s4">figure 1</a>.</p>
   </div>
 </section>
@@ -839,11 +841,15 @@ compileScript(script, privileged):
   <h2><span class="secnum">12</span>Limits and trade-offs</h2>
 
   <ul>
-    <li><strong>Stack sizes.</strong> The expression stack is bounded by how deeply calls nest
-    inside one unit, and the unit stack by how deeply sub-expressions nest. One depth limit can
-    serve both. The pending stack holds every pending entry along a single path from a root to
-    the unit being compiled, so the depth limit times the most <code>x</code> arguments any
-    command takes is a safe size for it.</li>
+    <li><strong>Stack sizes.</strong> The expression stack only holds one unit&rsquo;s open
+    calls, so it is bounded by how deeply calls nest inside one unit, and the nesting depth
+    limit is the right size for it. The unit stack has no such bound. It holds the chain of
+    units from the root to the one being compiled, and also every sibling along that chain that
+    has not been started yet. A single unit such as <code>(do (if a b) (if c d) ...)</code>
+    pushes two frames for every <code>if</code>, however shallow it is. So give the unit stack
+    its own limit, a few hundred frames being far more than any hand-written script needs, and
+    check it in pass 2 before every push. That one check covers both deep nesting and wide
+    units.</li>
     <li><strong>Repeated strings.</strong> Strings are only shared within a unit. A string used
     in five sub-units is stored five times. That is the price of each unit being
     self-contained.</li>
