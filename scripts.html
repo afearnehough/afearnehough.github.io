@@ -259,7 +259,8 @@ has to do to run it.</p>
   error handling and memory management so that the shape of the algorithm stays visible.
   <code>push</code>, <code>pop</code> and <code>top</code> act on small fixed-size stacks. A
   line that says <code>error</code> means: log the problem, give back the memory, and return
-  nothing.</p>
+  nothing. <code>var x = 0</code> declares a new variable, and a plain <code>x = 0</code>
+  assigns to one that already exists.</p>
 </div>
 
 <p class="parthead">Part I &middot; The format</p>
@@ -494,7 +495,7 @@ has to do to run it.</p>
   <p>Suppose an entity only needs the <code>Hi</code> branch. Copying it is one call:</p>
 
   <div class="code"><div class="lbl"><span><b>Listing 6.</b> Extracting a unit</span><span>no fix-ups</span></div><pre>
-length = cells[base]
+var length = cells[base]
 memcpy(newCells, cells + base, length * sizeof(u32))</pre></div>
 
   <p>In the new buffer the unit starts at cell 0 instead of cell 7, and nothing inside it needs
@@ -587,13 +588,13 @@ currentParam(e):
   <div class="code"><div class="lbl"><span><b>Listing 8.</b> Pass 1</span><span>strings only</span></div><pre>
 cellIndex = base + 2                 <span class="c">after the two header cells</span>
 clear exprs
-cursor = unit.exprStart
+var cursor = unit.exprStart
 
 do:
-  token = nextToken(script, &amp;cursor)
+  var token = nextToken(script, &amp;cursor)
 
-  <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
-           command = lookup(name) or error "Unknown command"
+  <span class="k">'('</span>    : var name = nextToken(script, &amp;cursor)
+           var command = lookup(name) or error "Unknown command"
            if exprs not empty and currentParam(exprs.top) == 'x':
              skipToMatchingClose(script, &amp;cursor)
              exprs.top.argIndex++
@@ -647,14 +648,14 @@ cells[base + 1] = cellIndex - base   <span class="c">codeOffset</span></pre></di
   <div class="code"><div class="lbl"><span><b>Listing 9.</b> Pass 2</span><span>code cells</span></div><pre>
 clear exprs
 cursor = unit.exprStart
-firstChild = units.length
+var firstChild = units.length
 
 do:
-  open  = cursor
-  token = nextToken(script, &amp;cursor)
+  var open  = cursor
+  var token = nextToken(script, &amp;cursor)
 
-  <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
-           command = lookup(name)
+  <span class="k">'('</span>    : var name = nextToken(script, &amp;cursor)
+           var command = lookup(name)
            if command.protected and not privileged: error "Command is protected"
            if exprs not empty and currentParam(exprs.top) == 'x':
              if units is full: error "Too many sub-expressions"
@@ -676,7 +677,7 @@ do:
            cells[cellIndex++] = data(2 + searchString(cells[base + 2 ...], token))
            exprs.top.argIndex++
 
-  <span class="k">')'</span>    : expr = pop exprs
+  <span class="k">')'</span>    : var expr = pop exprs
            check expr.argIndex is a valid count for expr.command.params
            cells[cellIndex++] = call(expr.commandId, expr.argIndex)
            if exprs not empty: exprs.top.argIndex++
@@ -760,14 +761,14 @@ UnitFrame:
 
   <div class="code"><div class="lbl"><span><b>Listing 11.</b> compileScript</span><span>one function, no recursion</span></div><pre>
 compileScript(script, privileged):
-  cells      = allocate(capacity)
-  cellIndex  = 0
-  rootCursor = 0
-  units      = stack of UnitFrame
-  exprs      = stack of Expression
+  var cells      = allocate(capacity)
+  var cellIndex  = 0
+  var rootCursor = 0
+  var units      = stack of UnitFrame
+  var exprs      = stack of Expression
 
   loop:                                    <span class="c">one iteration per root</span>
-    token = peekToken(script, rootCursor)
+    var token = peekToken(script, rootCursor)
     if token is END: break
     if token is not '(': error "Expected '(' at top level"
 
@@ -775,23 +776,23 @@ compileScript(script, privileged):
                  placeholder: none, compiled: false }
 
     while units not empty:
-      unit = units.top
+      var unit = units.top
 
       if not unit.compiled:
         unit.compiled = true
         unit.base = cellIndex
-        base = unit.base
+        var base = unit.base
 
         <span class="c">pass 1: the string pool</span>
         cellIndex = base + 2
         clear exprs
-        cursor = unit.exprStart
+        var cursor = unit.exprStart
 
         do:
-          token = nextToken(script, &amp;cursor)
+          var token = nextToken(script, &amp;cursor)
 
-          <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
-                   command = lookup(name) or error "Unknown command"
+          <span class="k">'('</span>    : var name = nextToken(script, &amp;cursor)
+                   var command = lookup(name) or error "Unknown command"
                    if exprs not empty and currentParam(exprs.top) == 'x':
                      skipToMatchingClose(script, &amp;cursor)
                      exprs.top.argIndex++
@@ -817,14 +818,14 @@ compileScript(script, privileged):
         <span class="c">pass 2: the code</span>
         clear exprs
         cursor = unit.exprStart
-        firstChild = units.length
+        var firstChild = units.length
 
         do:
-          open  = cursor
-          token = nextToken(script, &amp;cursor)
+          var open  = cursor
+          var token = nextToken(script, &amp;cursor)
 
-          <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
-                   command = lookup(name)
+          <span class="k">'('</span>    : var name = nextToken(script, &amp;cursor)
+                   var command = lookup(name)
                    if command.protected and not privileged: error "Command is protected"
                    if exprs not empty and currentParam(exprs.top) == 'x':
                      if units is full: error "Too many sub-expressions"
@@ -846,7 +847,7 @@ compileScript(script, privileged):
                    cells[cellIndex++] = data(2 + searchString(cells[base + 2 ...], token))
                    exprs.top.argIndex++
 
-          <span class="k">')'</span>    : expr = pop exprs
+          <span class="k">')'</span>    : var expr = pop exprs
                    check expr.argIndex is a valid count for expr.command.params
                    cells[cellIndex++] = call(expr.commandId, expr.argIndex)
                    if exprs not empty: exprs.top.argIndex++
