@@ -576,8 +576,8 @@ currentParam(e):
 
   <p>A unit&rsquo;s strings come before its code, but the compiler does not know which strings
   the code needs until it has read it. The simplest answer is to read the unit&rsquo;s tokens
-  twice. The tokeniser&rsquo;s position in the source text, <code>chIndex</code>, is all it needs
-  to start again, so a unit is identified by the <code>chIndex</code> of its opening
+  twice. The tokeniser&rsquo;s position in the source text, <code>cursor</code>, is all it needs
+  to start again, so a unit is identified by the <code>cursor</code> of its opening
   <code>(</code>.</p>
 
   <p>The first pass collects strings. It skips sub-expressions in <code>x</code> positions,
@@ -585,24 +585,24 @@ currentParam(e):
   string arguments.</p>
 
   <div class="code"><div class="lbl"><span><b>Listing 8.</b> Pass 1</span><span>strings only</span></div><pre>
-at = base + 2                        <span class="c">after the two header cells</span>
+cellIndex = base + 2                 <span class="c">after the two header cells</span>
 clear exprs
-chIndex = unit.exprStart
+cursor = unit.exprStart
 
 do:
-  token = nextToken(script, &amp;chIndex)
+  token = nextToken(script, &amp;cursor)
 
-  <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+  <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
            command = lookup(name) or error "Unknown command"
            if exprs not empty and currentParam(exprs.top) == 'x':
-             skipToMatchingClose(script, &amp;chIndex)
+             skipToMatchingClose(script, &amp;cursor)
              exprs.top.argIndex++
              continue
            push exprs { command, argIndex: 0 }
 
   <span class="k">string</span> : if currentParam(exprs.top) == 's'
              and not searchString(cells[base + 2 ...], token):
-             at += writeString(cells[at], token)
+             cellIndex += writeString(cells[cellIndex], token)
            exprs.top.argIndex++
 
   <span class="k">number</span> : exprs.top.argIndex++
@@ -613,8 +613,8 @@ do:
   <span class="k">END</span>    : error "Unclosed '('"
 while exprs not empty
 
-cells[at++] = 0                      <span class="c">end of the pool</span>
-cells[base + 1] = at - base          <span class="c">codeOffset</span></pre></div>
+cells[cellIndex++] = 0               <span class="c">end of the pool</span>
+cells[base + 1] = cellIndex - base   <span class="c">codeOffset</span></pre></div>
 
   <p><code>searchString</code> walks the pool from its start until it reaches the 0 cell, and
   returns the offset of a matching string if there is one. That stops the same string being
@@ -646,22 +646,22 @@ cells[base + 1] = at - base          <span class="c">codeOffset</span></pre></di
 
   <div class="code"><div class="lbl"><span><b>Listing 9.</b> Pass 2</span><span>code cells</span></div><pre>
 clear exprs
-chIndex = unit.exprStart
+cursor = unit.exprStart
 firstChild = units.length
 
 do:
-  open  = chIndex
-  token = nextToken(script, &amp;chIndex)
+  open  = cursor
+  token = nextToken(script, &amp;cursor)
 
-  <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+  <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
            command = lookup(name)
            if command.protected and not privileged: error "Command is protected"
            if exprs not empty and currentParam(exprs.top) == 'x':
              if units is full: error "Too many sub-expressions"
              push units { exprStart: open, parentBase: base,
-                          placeholder: at, compiled: false }
-             cells[at++] = placeholder
-             skipToMatchingClose(script, &amp;chIndex)
+                          placeholder: cellIndex, compiled: false }
+             cells[cellIndex++] = placeholder
+             skipToMatchingClose(script, &amp;cursor)
              exprs.top.argIndex++
              continue
            if exprs not empty:
@@ -669,20 +669,20 @@ do:
            push exprs { commandId, command, argIndex: 0 }
 
   <span class="k">number</span> : check currentParam(exprs.top) == 'n'
-           cells[at++] = data(number)
+           cells[cellIndex++] = data(number)
            exprs.top.argIndex++
 
   <span class="k">string</span> : check currentParam(exprs.top) == 's'
-           cells[at++] = data(2 + searchString(cells[base + 2 ...], token))
+           cells[cellIndex++] = data(2 + searchString(cells[base + 2 ...], token))
            exprs.top.argIndex++
 
   <span class="k">')'</span>    : expr = pop exprs
            check expr.argIndex is a valid count for expr.command.params
-           cells[at++] = call(expr.commandId, expr.argIndex)
+           cells[cellIndex++] = call(expr.commandId, expr.argIndex)
            if exprs not empty: exprs.top.argIndex++
 while exprs not empty
 
-cells[at++] = call(returnId, 0)
+cells[cellIndex++] = call(returnId, 0)
 reverse units[firstChild ...]        <span class="c">so the first child is on top</span></pre></div>
 
   <p>The <code>2 +</code> on the string offset is there because <code>searchString</code>
@@ -717,7 +717,7 @@ reverse units[firstChild ...]        <span class="c">so the first child is on to
   <div class="code"><div class="lbl"><span><b>Listing 10.</b> A unit frame</span><span></span></div><pre>
 UnitFrame:
   base              <span class="c">cell where this unit starts, set when it is compiled</span>
-  exprStart         <span class="c">chIndex of this unit's '('</span>
+  exprStart         <span class="c">cursor of this unit's '('</span>
   parentBase        <span class="c">base of the parent unit, or none for a root</span>
   placeholder       <span class="c">cell in the parent to patch, or none for a root</span>
   compiled          <span class="c">false until both passes have run</span></pre></div>
@@ -729,7 +729,7 @@ UnitFrame:
     buffer and run both passes. Pass 2 pushes a frame above it for each of its sub-units.</li>
     <li><strong>Already compiled:</strong> every frame that was above it has been finished and
     popped, so all of its sub-units are in place. Write its <code>unitLength</code> as
-    <code>at - base</code>, patch its placeholder in the parent with
+    <code>cellIndex - base</code>, patch its placeholder in the parent with
     <code>base - parentBase</code>, and pop it.</li>
   </ol>
 
@@ -738,8 +738,8 @@ UnitFrame:
   everything its own children write, lands before the next frame down is compiled. Each child
   therefore finishes completely before its next sibling starts, and the siblings land one after
   another inside the parent, which is exactly the layout in <a href="#s4">figure 1</a>. When the
-  parent reaches the top again, <code>at</code> is past its last descendant, so
-  <code>at - base</code> is its full length.</p>
+  parent reaches the top again, <code>cellIndex</code> is past its last descendant, so
+  <code>cellIndex - base</code> is its full length.</p>
 
   <div class="note">
     <span class="tag">Why the expression stack stays separate</span>
@@ -760,18 +760,18 @@ UnitFrame:
 
   <div class="code"><div class="lbl"><span><b>Listing 11.</b> compileScript</span><span>one function, no recursion</span></div><pre>
 compileScript(script, privileged):
-  cells  = allocate(capacity)
-  at     = 0
-  cursor = 0
-  units  = stack of UnitFrame
-  exprs  = stack of Expression
+  cells      = allocate(capacity)
+  cellIndex  = 0
+  rootCursor = 0
+  units      = stack of UnitFrame
+  exprs      = stack of Expression
 
   loop:                                    <span class="c">one iteration per root</span>
-    token = peekToken(script, cursor)
+    token = peekToken(script, rootCursor)
     if token is END: break
     if token is not '(': error "Expected '(' at top level"
 
-    push units { exprStart: cursor, parentBase: none,
+    push units { exprStart: rootCursor, parentBase: none,
                  placeholder: none, compiled: false }
 
     while units not empty:
@@ -779,28 +779,28 @@ compileScript(script, privileged):
 
       if not unit.compiled:
         unit.compiled = true
-        unit.base = at
+        unit.base = cellIndex
         base = unit.base
 
         <span class="c">pass 1: the string pool</span>
-        at = base + 2
+        cellIndex = base + 2
         clear exprs
-        chIndex = unit.exprStart
+        cursor = unit.exprStart
 
         do:
-          token = nextToken(script, &amp;chIndex)
+          token = nextToken(script, &amp;cursor)
 
-          <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+          <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
                    command = lookup(name) or error "Unknown command"
                    if exprs not empty and currentParam(exprs.top) == 'x':
-                     skipToMatchingClose(script, &amp;chIndex)
+                     skipToMatchingClose(script, &amp;cursor)
                      exprs.top.argIndex++
                      continue
                    push exprs { command, argIndex: 0 }
 
           <span class="k">string</span> : if currentParam(exprs.top) == 's'
                      and not searchString(cells[base + 2 ...], token):
-                     at += writeString(cells[at], token)
+                     cellIndex += writeString(cells[cellIndex], token)
                    exprs.top.argIndex++
 
           <span class="k">number</span> : exprs.top.argIndex++
@@ -811,27 +811,27 @@ compileScript(script, privileged):
           <span class="k">END</span>    : error "Unclosed '('"
         while exprs not empty
 
-        cells[at++] = 0
-        cells[base + 1] = at - base
+        cells[cellIndex++] = 0
+        cells[base + 1] = cellIndex - base
 
         <span class="c">pass 2: the code</span>
         clear exprs
-        chIndex = unit.exprStart
+        cursor = unit.exprStart
         firstChild = units.length
 
         do:
-          open  = chIndex
-          token = nextToken(script, &amp;chIndex)
+          open  = cursor
+          token = nextToken(script, &amp;cursor)
 
-          <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+          <span class="k">'('</span>    : name = nextToken(script, &amp;cursor)
                    command = lookup(name)
                    if command.protected and not privileged: error "Command is protected"
                    if exprs not empty and currentParam(exprs.top) == 'x':
                      if units is full: error "Too many sub-expressions"
                      push units { exprStart: open, parentBase: base,
-                                  placeholder: at, compiled: false }
-                     cells[at++] = placeholder
-                     skipToMatchingClose(script, &amp;chIndex)
+                                  placeholder: cellIndex, compiled: false }
+                     cells[cellIndex++] = placeholder
+                     skipToMatchingClose(script, &amp;cursor)
                      exprs.top.argIndex++
                      continue
                    if exprs not empty:
@@ -839,35 +839,35 @@ compileScript(script, privileged):
                    push exprs { commandId, command, argIndex: 0 }
 
           <span class="k">number</span> : check currentParam(exprs.top) == 'n'
-                   cells[at++] = data(number)
+                   cells[cellIndex++] = data(number)
                    exprs.top.argIndex++
 
           <span class="k">string</span> : check currentParam(exprs.top) == 's'
-                   cells[at++] = data(2 + searchString(cells[base + 2 ...], token))
+                   cells[cellIndex++] = data(2 + searchString(cells[base + 2 ...], token))
                    exprs.top.argIndex++
 
           <span class="k">')'</span>    : expr = pop exprs
                    check expr.argIndex is a valid count for expr.command.params
-                   cells[at++] = call(expr.commandId, expr.argIndex)
+                   cells[cellIndex++] = call(expr.commandId, expr.argIndex)
                    if exprs not empty: exprs.top.argIndex++
         while exprs not empty
 
-        cells[at++] = call(returnId, 0)
+        cells[cellIndex++] = call(returnId, 0)
         reverse units[firstChild ...]
 
-        if unit.parentBase is none: cursor = chIndex
+        if unit.parentBase is none: rootCursor = cursor
         continue
 
-      cells[unit.base] = at - unit.base
+      cells[unit.base] = cellIndex - unit.base
       if unit.placeholder is not none:
         cells[unit.placeholder] = data(unit.base - unit.parentBase)
       pop units
 
-  cells[at] = 0                            <span class="c">end of the root list</span>
+  cells[cellIndex] = 0                   <span class="c">end of the root list</span>
   return cells</pre></div>
 
-  <p>The line <code>cursor = chIndex</code> only runs for a root, after its pass 2. At that point
-  <code>chIndex</code> is just past the root&rsquo;s closing <code>)</code>, which is where the
+  <p>The line <code>rootCursor = cursor</code> only runs for a root, after its pass 2. At that point
+  <code>cursor</code> is just past the root&rsquo;s closing <code>)</code>, which is where the
   next root begins. Sub-units never move the cursor: their source text is inside the root&rsquo;s
   and has already been passed.</p>
 
