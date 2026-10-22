@@ -754,7 +754,9 @@ UnitFrame:
   <h2><span class="secnum">10</span>The whole compiler</h2>
 
   <p>Putting the pieces together, with an outer loop over the root expressions, gives the whole
-  of <code>compileScript</code>. Pass 1 and pass 2 are listings 8 and 9 unchanged.</p>
+  of <code>compileScript</code>. Pass 1 and pass 2 are listings 8 and 9, written out in place.
+  The <code>continue</code> inside each pass moves on to the next token; the one after pass 2
+  goes back to the top of the unit loop.</p>
 
   <div class="code"><div class="lbl"><span><b>Listing 11.</b> compileScript</span><span>one function, no recursion</span></div><pre>
 compileScript(script, privileged):
@@ -779,8 +781,80 @@ compileScript(script, privileged):
         unit.compiled = true
         unit.base = at
         base = unit.base
-        <span class="c">pass 1 (listing 8)</span>
-        <span class="c">pass 2 (listing 9)</span>
+
+        <span class="c">pass 1: the string pool</span>
+        at = base + 2
+        clear exprs
+        chIndex = unit.exprStart
+
+        do:
+          token = nextToken(script, &amp;chIndex)
+
+          <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+                   command = lookup(name) or error "Unknown command"
+                   if exprs not empty and currentParam(exprs.top) == 'x':
+                     skipToMatchingClose(script, &amp;chIndex)
+                     exprs.top.argIndex++
+                     continue
+                   push exprs { command, argIndex: 0 }
+
+          <span class="k">string</span> : if currentParam(exprs.top) == 's'
+                     and not searchString(cells[base + 2 ...], token):
+                     at += writeString(cells[at], token)
+                   exprs.top.argIndex++
+
+          <span class="k">number</span> : exprs.top.argIndex++
+
+          <span class="k">')'</span>    : pop exprs
+                   if exprs not empty: exprs.top.argIndex++
+
+          <span class="k">END</span>    : error "Unclosed '('"
+        while exprs not empty
+
+        cells[at++] = 0
+        cells[base + 1] = at - base
+
+        <span class="c">pass 2: the code</span>
+        clear exprs
+        chIndex = unit.exprStart
+        firstChild = units.length
+
+        do:
+          open  = chIndex
+          token = nextToken(script, &amp;chIndex)
+
+          <span class="k">'('</span>    : name = nextToken(script, &amp;chIndex)
+                   command = lookup(name)
+                   if command.protected and not privileged: error "Command is protected"
+                   if exprs not empty and currentParam(exprs.top) == 'x':
+                     if units is full: error "Too many sub-expressions"
+                     push units { exprStart: open, parentBase: base,
+                                  placeholder: at, compiled: false }
+                     cells[at++] = placeholder
+                     skipToMatchingClose(script, &amp;chIndex)
+                     exprs.top.argIndex++
+                     continue
+                   if exprs not empty:
+                     check returnType(command) fits currentParam(exprs.top)
+                   push exprs { commandId, command, argIndex: 0 }
+
+          <span class="k">number</span> : check currentParam(exprs.top) == 'n'
+                   cells[at++] = data(number)
+                   exprs.top.argIndex++
+
+          <span class="k">string</span> : check currentParam(exprs.top) == 's'
+                   cells[at++] = data(2 + searchString(cells[base + 2 ...], token))
+                   exprs.top.argIndex++
+
+          <span class="k">')'</span>    : expr = pop exprs
+                   check expr.argIndex is a valid count for expr.command.params
+                   cells[at++] = call(expr.commandId, expr.argIndex)
+                   if exprs not empty: exprs.top.argIndex++
+        while exprs not empty
+
+        cells[at++] = call(returnId, 0)
+        reverse units[firstChild ...]
+
         if unit.parentBase is none: cursor = chIndex
         continue
 
